@@ -40,7 +40,8 @@ from pyspark.streaming import DStream
 
 __all__ = ['BisectingKMeansModel', 'BisectingKMeans', 'KMeansModel', 'KMeans',
            'GaussianMixtureModel', 'GaussianMixture', 'PowerIterationClusteringModel',
-           'PowerIterationClustering', 'StreamingKMeans', 'StreamingKMeansModel',
+           'PowerIterationClustering', 'DependenceClusteringModel', 'DependenceClustering', 
+           'StreamingKMeans', 'StreamingKMeansModel',
            'LDA', 'LDAModel']
 
 
@@ -689,6 +690,128 @@ class PowerIterationClustering(object):
         .. versionadded:: 1.5.0
         """
 
+class DependenceClusteringModel(JavaModelWrapper, JavaSaveable, JavaLoader):
+
+    """
+    .. note:: Experimental
+
+    Model produced by [[DependenceClustering]].
+
+    >>> import math
+    >>> def genCircle(r, n):
+    ...   points = []
+    ...   for i in range(0, n):
+    ...     theta = 2.0 * math.pi * i / n
+    ...     points.append((r * math.cos(theta), r * math.sin(theta)))
+    ...   return points
+    >>> def sim(x, y):
+    ...   dist2 = (x[0] - y[0]) * (x[0] - y[0]) + (x[1] - y[1]) * (x[1] - y[1])
+    ...   return math.exp(-dist2 / 2.0)
+    >>> r1 = 1.0
+    >>> n1 = 10
+    >>> r2 = 4.0
+    >>> n2 = 40
+    >>> n = n1 + n2
+    >>> points = genCircle(r1, n1) + genCircle(r2, n2)
+    >>> similarities = [(i, j, sim(points[i], points[j])) for i in range(1, n) for j in range(0, i)]
+    >>> rdd = sc.parallelize(similarities, 2)
+    >>> model = DependenceClustering.train(rdd, 1, 0.0, 0.0, 40)
+    >>> model.t
+    1
+    >>> result = sorted(model.assignments().collect(), key=lambda x: x.id)
+    >>> result[0].cluster == result[1].cluster == result[2].cluster == result[3].cluster
+    True
+    >>> result[4].cluster == result[5].cluster == result[6].cluster == result[7].cluster
+    True
+    
+    .. versionadded:: 1.5.0
+    """
+
+    @property
+    @since('1.5.0')
+    def t(self):
+        """
+        Returns the number of Markov transitions.
+        """
+        return self.call("t")
+
+    @property
+    @since('1.5.0')
+    def epsi_d(self):
+        """
+        Returns the baseline dependence level.
+        """
+        return self.call("epsi_d")
+
+    @property
+    @since('1.5.0')
+    def delta_dep(self):
+        """
+        Returns the dependence threshold to allow split.
+        """
+        return self.call("delta_dep")
+
+    @since('1.5.0')
+    def assignments(self):
+        """
+        Returns the cluster assignments of this model.
+        """
+        return self.call("getAssignments").map(
+            lambda x: (DependenceClustering.Assignment(*x)))
+
+    @classmethod
+    @since('1.5.0')
+    def load(cls, sc, path):
+        """
+        Load a model from the given path.
+        """
+        model = cls._load_java(sc, path)
+        wrapper = sc._jvm.DependenceClusteringModelWrapper(model)
+        return DependenceClusteringModel(wrapper)
+
+
+class DependenceClustering(object):
+    """
+    .. note:: Experimental
+
+    Dependence Clustering (DEP), a scalable graph clustering algorithm
+    developed by [[http://www.icml2010.org/papers/387.pdf Lin and Cohen]].
+    From the abstract: DEP finds a very low-dimensional embedding of a
+    dataset using truncated power iteration on a normalized pair-wise
+    similarity matrix of the data.
+
+    .. versionadded:: 1.5.0
+    """
+
+    @classmethod
+    @since('1.5.0')
+    def train(cls, rdd, t, epsi_d, delta_dep, maxIterations=100, initMode="random"):
+        """
+        :param rdd: an RDD of (i, j, s,,ij,,) tuples representing the
+            affinity matrix, which is the matrix A in the DEP paper.
+            The similarity s,,ij,, must be nonnegative.
+            This is a symmetric matrix and hence s,,ij,, = s,,ji,,.
+            For any (i, j) with nonzero similarity, there should be
+            either (i, j, s,,ij,,) or (j, i, s,,ji,,) in the input.
+            Tuples with i = j are ignored, because we assume
+            s,,ij,, = 0.0.
+        :param t: Number of Markov transitions.
+        :param epsi_d: baseline dependence.
+        :param delta_dep: dependence threshold to allow split
+        :param maxIterations: Maximum number of iterations of the
+            DEP algorithm.
+        :param initMode: Initialization mode.
+        """
+        model = callMLlibFunc("trainDependenceClusteringModel",
+                              rdd.map(_convert_to_vector), int(t), float(epsi_d), float(delta_dep), int(maxIterations), initMode)
+        return DependenceClusteringModel(model)
+
+    class Assignment(namedtuple("Assignment", ["id", "cluster"])):
+        """
+        Represents an (id, cluster) tuple.
+
+        .. versionadded:: 1.5.0
+        """
 
 class StreamingKMeansModel(KMeansModel):
     """

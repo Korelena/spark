@@ -463,6 +463,39 @@ private[python] class PythonMLLibAPI extends Serializable {
   }
 
   /**
+   * Java stub for Python mllib DependenceClustering.run(). This stub returns a
+   * handle to the Java object instead of the content of the Java object.  Extra care
+   * needs to be taken in the Python code to ensure it gets freed on exit; see the
+   * Py4J documentation.
+   * @param data an RDD of (i, j, s,,ij,,) tuples representing the affinity matrix.
+   * @param t number of Markov transitions.
+   * @param epsi_d baseline dependence level
+   * @param delta_dep threshold for dependence gain to continue split
+   * @param maxIterations maximum number of iterations of the power iteration loop.
+   * @param initMode the initialization mode. This can be either "random" to use
+   *                 a random vector as vertex properties, or "degree" to use
+   *                 normalized sum similarities. Default: random.
+   */
+  def trainDependenceClusteringModel(
+      data: JavaRDD[Vector],
+      t: Int,
+      epsi_d: Float,
+      delta_dep: Float,
+      maxIterations: Int,
+      initMode: String): DependenceClusteringModel = {
+
+    val dep = new DependenceClustering()
+      .setT(t)
+      .setEpsiD(epsi_d)
+      .setDeltaDep(delta_dep)
+      .setMaxIterations(maxIterations)
+      .setInitializationMode(initMode)
+
+    val model = dep.run(data.rdd.map(v => (v(0).toLong, v(1).toLong, v(2))))
+    new DependenceClusteringModelWrapper(model)
+  }
+
+  /**
    * Java stub for Python mllib ALS.train().  This stub returns a handle
    * to the Java object instead of the content of the Java object.  Extra care
    * needs to be taken in the Python code to ensure it gets freed on exit; see

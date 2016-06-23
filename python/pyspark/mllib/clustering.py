@@ -715,9 +715,9 @@ class DependenceClusteringModel(JavaModelWrapper, JavaSaveable, JavaLoader):
     >>> points = genCircle(r1, n1) + genCircle(r2, n2)
     >>> similarities = [(i, j, sim(points[i], points[j])) for i in range(1, n) for j in range(0, i)]
     >>> rdd = sc.parallelize(similarities, 2)
-    >>> model = DependenceClustering.train(rdd, 1, 0.0, 0.0, 40)
+    >>> model = DependenceClustering.train(rdd, 0, 0.0, 0.0, 0.0, 0.0, 40)
     >>> model.t
-    1
+    0
     >>> result = sorted(model.assignments().collect(), key=lambda x: x.id)
     >>> result[0].cluster == result[1].cluster == result[2].cluster == result[3].cluster
     True
@@ -750,6 +750,22 @@ class DependenceClusteringModel(JavaModelWrapper, JavaSaveable, JavaLoader):
         Returns the dependence threshold to allow split.
         """
         return self.call("delta_dep")
+
+    @property
+    @since('1.5.0')
+    def delta_e(self):
+        """
+        Returns the edge threshold to allow edge addition.
+        """
+        return self.call("delta_e")
+
+    @property
+    @since('1.5.0')
+    def delta_v(self):
+        """
+        Returns the vertex threshold to allow edge addition.
+        """
+        return self.call("delta_v")
 
     @since('1.5.0')
     def assignments(self):
@@ -785,7 +801,7 @@ class DependenceClustering(object):
 
     @classmethod
     @since('1.5.0')
-    def train(cls, rdd, t, epsi_d, delta_dep, maxIterations=100, initMode="random"):
+    def train(cls, rdd, t, epsi_d, delta_dep, delta_e, delta_v, maxIterations=100, initMode="random"):
         """
         :param rdd: an RDD of (i, j, s,,ij,,) tuples representing the
             affinity matrix, which is the matrix A in the DEP paper.
@@ -798,12 +814,14 @@ class DependenceClustering(object):
         :param t: Number of Markov transitions.
         :param epsi_d: baseline dependence.
         :param delta_dep: dependence threshold to allow split
+        :param delta_e: edge threshold to allow new edge addition
+        :param delta_v: vertex threshold to allow new edge addition
         :param maxIterations: Maximum number of iterations of the
             DEP algorithm.
         :param initMode: Initialization mode.
         """
         model = callMLlibFunc("trainDependenceClusteringModel",
-                              rdd.map(_convert_to_vector), int(t), float(epsi_d), float(delta_dep), int(maxIterations), initMode)
+                              rdd.map(_convert_to_vector), int(t), float(epsi_d), float(delta_dep), float(delta_e), float(delta_v), int(maxIterations), initMode)
         return DependenceClusteringModel(model)
 
     class Assignment(namedtuple("Assignment", ["id", "cluster"])):

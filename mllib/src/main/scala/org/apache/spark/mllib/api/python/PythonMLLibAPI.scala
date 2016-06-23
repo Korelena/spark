@@ -471,6 +471,8 @@ private[python] class PythonMLLibAPI extends Serializable {
    * @param t number of Markov transitions.
    * @param epsi_d baseline dependence level
    * @param delta_dep threshold for dependence gain to continue split
+   * @param delta_e threshold allowing diffusion
+   * @param delta_v threshold allowing diffusion
    * @param maxIterations maximum number of iterations of the power iteration loop.
    * @param initMode the initialization mode. This can be either "random" to use
    *                 a random vector as vertex properties, or "degree" to use
@@ -481,6 +483,8 @@ private[python] class PythonMLLibAPI extends Serializable {
       t: Int,
       epsi_d: Float,
       delta_dep: Float,
+      delta_e: Float,
+      delta_v: Float,
       maxIterations: Int,
       initMode: String): DependenceClusteringModel = {
 
@@ -488,6 +492,8 @@ private[python] class PythonMLLibAPI extends Serializable {
       .setT(t)
       .setEpsiD(epsi_d)
       .setDeltaDep(delta_dep)
+      .setDeltaE(delta_e)
+      .setDeltaV(delta_v)
       .setMaxIterations(maxIterations)
       .setInitializationMode(initMode)
 

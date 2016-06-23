@@ -47,6 +47,8 @@ class DependenceClusteringModel @Since("1.3.0") (
     @Since("1.3.0") val t: Int,
     @Since("1.3.0") val epsi_d: Float,
     @Since("1.3.0") val delta_dep: Float,
+    @Since("1.3.0") val delta_e: Float,
+    @Since("1.3.0") val delta_v: Float,
     @Since("1.3.0") val assignments: RDD[DependenceClustering.Assignment])
   extends Saveable with Serializable {
 
@@ -99,6 +101,8 @@ object DependenceClusteringModel extends Loader[DependenceClusteringModel] {
       val t = (metadata \ "t").extract[Int]
       val epsi_d = (metadata \ "epsi_d").extract[Float]
       val delta_dep = (metadata \ "delta_dep").extract[Float]
+      val delta_e = (metadata \ "delta_e").extract[Float]
+      val delta_v = (metadata \ "delta_v").extract[Float]
       val assignments = sqlContext.read.parquet(Loader.dataPath(path))
       Loader.checkSchema[DependenceClustering.Assignment](assignments.schema)
 
@@ -106,19 +110,17 @@ object DependenceClusteringModel extends Loader[DependenceClusteringModel] {
         case Row(id: Long, cluster: Int, eval: Float) => DependenceClustering.Assignment(id, cluster)
       }
 
-      new DependenceClusteringModel(t, epsi_d, delta_dep, assignmentsRDD)
+      new DependenceClusteringModel(t, epsi_d, delta_dep, delta_e, delta_v, assignmentsRDD)
     }
   }
 }
 
 /**
- * Power Iteration Clustering (PIC), a scalable graph clustering algorithm developed by
- * [[http://www.icml2010.org/papers/387.pdf Lin and Cohen]]. From the abstract: PIC finds a very
- * low-dimensional embedding of a dataset using truncated power iteration on a normalized pair-wise
- * similarity matrix of the data.
+ * Dependence Clustering (DEP), a graph clustering algorithm developed by
+ * [[http://www.sciencedirect.com/science/article/pii/S095070511400015X Park and Lee]].
  *
- * @param k Number of clusters.
- * @param maxIterations Maximum number of iterations of the PIC algorithm.
+ * @param t Number of diffusion iterations.
+ * @param maxIterations Maximum number of iterations of the DEP algorithm.
  * @param initMode Initialization mode.
  *
  * @see [[http://en.wikipedia.org/wiki/Spectral_clustering Spectral clustering (Wikipedia)]]
@@ -128,17 +130,19 @@ class DependenceClustering private[clustering] (
     private var t: Int,
     private var epsi_d: Float,
     private var delta_dep: Float,
+    private var delta_e: Float,
+    private var delta_v: Float,
     private var maxIterations: Int,
     private var initMode: String) extends Serializable {
 
   import org.apache.spark.mllib.clustering.DependenceClustering._
 
   /**
-   * Constructs a DEP instance with default parameters: {t: 2, epsi_d: 0.0, delta_dep: 0.0, maxIterations: 100,
+   * Constructs a DEP instance with default parameters: {t: 2, epsi_d: 0.0, delta_dep: 0.0, delta_e = 0.0, delta_v = 0.0, maxIterations: 100,
    * initMode: "random"}.
    */
   @Since("1.3.0")
-  def this() = this(t = 2, epsi_d = 0.0f, delta_dep = 0.0f, maxIterations = 100, initMode = "random")
+  def this() = this(t = 2, epsi_d = 0.0f, delta_dep = 0.0f, delta_e = 0.0f, delta_v = 0.0f, maxIterations = 100, initMode = "random")
 
   /**
    * Set the number of clusters.
@@ -167,6 +171,23 @@ class DependenceClustering private[clustering] (
     this
   }
 
+  /**
+   * Set delta_e.
+   */
+  @Since("1.3.0")
+  def setDeltaE(delta_e: Float): this.type = {
+    this.delta_e = delta_e
+    this
+  }
+
+  /**
+   * Set delta_v.
+   */
+  @Since("1.3.0")
+  def setDeltaV(delta_v: Float): this.type = {
+    this.delta_v = delta_v
+    this
+  }
 
   /**
    * Set maximum number of iterations of the power iteration loop
@@ -205,7 +226,7 @@ class DependenceClustering private[clustering] (
    */
   @Since("1.3.0")
   def run(similarities: RDD[(Long, Long, Double)]): DependenceClusteringModel = {
-    val w = normalize(similarities, epsi_d)
+    val w = normalize(similarities, epsi_d, t, delta_e, delta_v)
     val w0 = initMode match {
       case "random" => randomInit(w)
       case "degree" => initDegreeVector(w)
@@ -302,7 +323,7 @@ class DependenceClustering private[clustering] (
 
    val assignments = debug.keys.flatMap(i => debug(i).index_full zip Stream.continually(i))
 			       .map{case (id, cl) => Assignment(id, cl)}
-   new DependenceClusteringModel(t, epsi_d, delta_dep, similarities.context.parallelize(assignments.toSeq))
+   new DependenceClusteringModel(t, epsi_d, delta_dep, delta_e, delta_v, similarities.context.parallelize(assignments.toSeq))
   }
 
   /**
@@ -328,7 +349,7 @@ class DependenceClustering private[clustering] (
         Assignment(id, if (eval > 0) 1 else 0)
       }
     }, preservesPartitioning = true)
-    new DependenceClusteringModel(t, epsi_d, delta_dep, assignments)
+    new DependenceClusteringModel(t, epsi_d, delta_dep, delta_e, delta_v, assignments)
   }
 }
 
@@ -347,7 +368,7 @@ object DependenceClustering extends Logging {
    * Normalizes the affinity matrix (A) by row sums and returns the normalized affinity matrix (W).
    */
   private[clustering]
-  def normalize(similarities: RDD[(Long, Long, Double)], epsi_d: Float)
+  def normalize(similarities: RDD[(Long, Long, Double)], epsi_d: Float, t: Int, delta_e: Float, delta_v: Float)
     : Graph[Double, Double] = {
     val edges = similarities.flatMap { case (i, j, s) =>
       if (s < 0.0) {
@@ -359,9 +380,65 @@ object DependenceClustering extends Logging {
         None
       }
     }
-    val gA = Graph.fromEdges(edges, 0.0)
-
+    var gA = Graph.fromEdges(edges, 0.0)
     val ne = gA.numVertices
+
+    // Propagate diffusion
+    for (a <- 1 to t){
+        var outDegrees: VertexRDD[Int] = gA.outDegrees
+
+        // Sum all in-edges
+        var vD_ = gA.aggregateMessages[Double](
+        sendMsg = ctx => {
+                ctx.sendToDst(ctx.attr)
+        },
+        mergeMsg = _ + _,
+        TripletFields.EdgeOnly)
+
+        var gB_ = Graph(vD_.join(outDegrees), gA.edges)
+
+        var vD__ = gB_.aggregateMessages[mutable.Map[Long, Double]](
+                sendMsg = ctx => {
+                if (ctx.attr * ctx.srcAttr._1  > delta_v){
+                        ctx.sendToSrc(mutable.Map(ctx.dstId -> ctx.attr))
+                }else{
+                        ctx.sendToSrc(mutable.Map[Long, Double]())
+                }
+                },
+                mergeMsg = {(a, b) => a ++= b},
+                TripletFields.All)
+
+        var gB__ = Graph(vD__, gA.edges)
+        var vD___ = gB__.aggregateMessages[Set[(Long, Double)]](
+                sendMsg = ctx => {
+                var newEdges : Set[(Long, Double)] = Set()
+                if (ctx.srcAttr != null && ctx.dstAttr != null){
+                ctx.dstAttr.keys.foreach{ i =>
+                        if (!ctx.srcAttr.contains(i) && ctx.attr > delta_e){
+                                newEdges = newEdges union Set((i, ctx.attr * ctx.dstAttr(i)))
+                        }
+                }
+                }
+                ctx.sendToSrc(newEdges)
+                },
+                mergeMsg = {(a, b) => a union b},
+                TripletFields.All)
+
+        var edgesAdd = vD___.flatMap{case (id, s) => s.map(e => Edge(id, e._1, e._2))}
+
+        var gAdd = Graph.fromEdges(edgesAdd, 0.0)
+
+        var gDiff: Graph[Double,Double] = Graph(
+                gA.vertices,
+                gA.edges.union(gAdd.edges)
+        ).groupEdges( (attr1, attr2) => if (attr1 > attr2) attr1 else attr2 )
+
+        gA = gDiff.mapVertices((id, attr) => 0.0)
+    }
+
+
+
+    // Normalize rows
     val vD = gA.aggregateMessages[Double](
       sendMsg = ctx => {
         ctx.sendToSrc(ctx.attr)
@@ -375,6 +452,7 @@ object DependenceClustering extends Logging {
         new TripletFields(/* useSrc */ true,
                           /* useDst */ false,
                           /* useEdge */ true))
+    // Normalize columns
     val gC = Graph.fromEdges(gB.edges, 0.0)
     val vE = gC.aggregateMessages[Double](
       sendMsg = ctx => {
@@ -415,8 +493,6 @@ object DependenceClustering extends Logging {
 
   /**
    * Generates the degree vector as the vertex properties (v0) to start power iteration.
-   * It is not exactly the node degrees but just the normalized sum similarities. Call it
-   * as degree vector because it is used in the PIC paper.
    *
    * @param g a graph representing the normalized affinity matrix (W)
    * @return a graph with edges representing W and vertices representing the degree vector

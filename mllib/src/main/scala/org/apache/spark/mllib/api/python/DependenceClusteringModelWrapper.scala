@@ -24,7 +24,7 @@ import org.apache.spark.mllib.clustering.DependenceClusteringModel
  * A Wrapper of DependenceClusteringModel to provide helper method for Python
  */
 private[python] class DependenceClusteringModelWrapper(model: DependenceClusteringModel)
-  extends DependenceClusteringModel(model.t, model.epsi_d, model.delta_dep, model.assignments) {
+  extends DependenceClusteringModel(model.t, model.epsi_d, model.delta_dep, model.delta_e, model.delta_v, model.assignments) {
 
   def getAssignments: RDD[Array[Any]] = {
     model.assignments.map(x => Array(x.id, x.cluster))

@@ -236,93 +236,93 @@ class DependenceClustering private[clustering] (
     var continueIteration = true
 
     /* Storage for a group info */
-    case class debug_info(var gd_full: Double, /* group dependence for index_full slice*/ 
-				var gd_m: Double, /* group dependence for index_m slice*/
-				var gd_p: Double, /* group dependence for index_p slice*/
-				var index_m: Set[Long], /* slice of items from index_full that received negative dependence score */
-				var index_p: Set[Long],  /* slice of items from index_full that received positive dependence score */
-				var index_full: Set[Long],  /* slice of items from the entire item pool */
-				var tried: Boolean, /* flag for whether split of index_full into index_m and index_p was tried */
-				var split: Boolean)  /* flag for whether split of index_full into index_m and index_p was successful */
+    case class debug_info(var gd_full: Double, /* group dependence for index_full slice */
+                                var gd_m: Double, /* group dependence for index_m slice */
+                                var gd_p: Double, /* group dependence for index_p slice */
+                                var index_m: Set[Long], /* slice of items from index_full that received negative dependence score */
+                                var index_p: Set[Long],  /* slice of items from index_full that received positive dependence score */
+                                var index_full: Set[Long],  /* slice of items from the entire item pool */
+                                var tried: Boolean, /* flag for whether split of index_full into index_m and index_p was tried */
+                                var split: Boolean)  /* flag for whether split of index_full into index_m and index_p was successful */
 
    /* Storage of info for all groups */
-   val debug = mutable.Map(0 -> debug_info(w0.edges.map(e => e.attr).reduce(_+_), 
-				0.0, 
-				0.0, 
-				Set(), 
-				Set(), 
-				0L until ne toSet, 
-				false,		
-				false))
+   val debug = mutable.Map(0 -> debug_info(w0.edges.map(e => e.attr).reduce(_ + _),
+                                0.0,
+                                0.0,
+                                Set(),
+                                Set(),
+                                0L until ne toSet,
+                                false,
+                                false))
 
    val maxDep = w0.edges.map(e => e.attr)
-		 	.filter(e => e > 0.0)
-			.reduce(_+_)
- 
-   while(continueIteration == true){
-   	continueIteration = false
-    	var maxDepGain = 0.0
-    	var maxGroup = -1
+                        .filter(e => e > 0.0)
+                        .reduce(_ + _)
 
-        debug.keys.foreach{ i =>  
-			   if (!debug(i).tried){
-            			debug(i).tried = true
-            			val selected_indices = debug(i).index_full
-				var subM = w0.subgraph(vpred = (id, d) => selected_indices contains id)
-            			var md = dep(subM)
-				
-            			debug(i).index_m = md.assignments.filter(a => a.cluster == 0).map(a => a.id).collect().toSet
-            			debug(i).index_p = md.assignments.filter(a => a.cluster == 1).map(a => a.id).collect().toSet				
-				
-            			debug(i).gd_m = if (debug(i).index_m.size > 0) subM.subgraph(vpred = (id, d) => debug(i).index_m contains id)
-											.edges.map(e => e.attr)
-											.reduce(_+_) else 0.0
-				debug(i).gd_p = if (debug(i).index_p.size > 0) subM.subgraph(vpred = (id, d) => debug(i).index_p contains id)
-											.edges.map(e => e.attr)
-											.reduce(_+_) else 0.0
+   while(continueIteration == true) {
+        continueIteration = false
+        var maxDepGain = 0.0
+        var maxGroup = -1
 
-		                if (!debug(i).index_m.isEmpty && !debug(i).index_p.isEmpty){
-                			debug(i).split = true
-			        }
-					
-                           	print( "Key = " + i )
-                           	println(" Value = " + debug(i))
-			     }
+        debug.keys.foreach{ i =>
+                           if (!debug(i).tried) {
+                                debug(i).tried = true
+                                val selected_indices = debug(i).index_full
+                                var subM = w0.subgraph(vpred = (id, d) => selected_indices contains id)
+                                var md = dep(subM)
 
-        		     if (debug(i).split){
-            			var depGain =  debug(i).gd_m + debug(i).gd_p - debug(i).gd_full
-            			if (depGain > maxDepGain + 1E-16){
-                			maxDepGain = depGain
-                			maxGroup = i
-				}
-			     }
-	}
-    	if (maxDepGain > maxDep*delta_dep){
-        	continueIteration = true
-        	var newGroup = debug.size
+                                debug(i).index_m = md.assignments.filter(a => a.cluster == 0).map(a => a.id).collect().toSet
+                                debug(i).index_p = md.assignments.filter(a => a.cluster == 1).map(a => a.id).collect().toSet
+
+                                debug(i).gd_m = if (debug(i).index_m.size > 0) subM.subgraph(vpred = (id, d) => debug(i).index_m contains id)
+                                                                                        .edges.map(e => e.attr)
+                                                                                        .fold(0.0)(_ + _) else 0.0
+                                debug(i).gd_p = if (debug(i).index_p.size > 0) subM.subgraph(vpred = (id, d) => debug(i).index_p contains id)
+                                                                                        .edges.map(e => e.attr)
+                                                                                        .fold(0.0)(_ + _) else 0.0
+
+                                if (!debug(i).index_m.isEmpty && !debug(i).index_p.isEmpty) {
+                                    debug(i).split = true
+                                }
+
+                                print( "Key = " + i )
+                                println(" Value = " + debug(i))
+                              }
+
+                              if (debug(i).split) {
+                                var depGain = debug(i).gd_m + debug(i).gd_p - debug(i).gd_full
+                                if (depGain > maxDepGain + 1E-16) {
+                                        maxDepGain = depGain
+                                        maxGroup = i
+                              }
+                           }
+       }
+       if (maxDepGain > maxDep*delta_dep) {
+                continueIteration = true
+                var newGroup = debug.size
 		/* Create and initialize info container for the new newGroup group */
-		debug += (newGroup -> debug_info(debug(maxGroup).gd_m,
-                                	0.0,
-                                	0.0,
-                                	Set(),
-                                	Set(),
-                                	debug(maxGroup).index_m,
-                                	false,
-					false))
-		/* Update info for the old maxGroup group */
-                debug(maxGroup).gd_full = debug(maxGroup).gd_p 
-		debug(maxGroup).index_full = debug(maxGroup).index_p
-		debug(maxGroup).gd_m = 0.0
-		debug(maxGroup).gd_p = 0.0
-		debug(maxGroup).index_m = Set()
-		debug(maxGroup).index_p = Set()
-		debug(maxGroup).tried = false
-		debug(maxGroup).split = false
-	}
+                debug += (newGroup -> debug_info(debug(maxGroup).gd_m,
+                                        0.0,
+                                        0.0,
+                                        Set(),
+                                        Set(),
+                                        debug(maxGroup).index_m,
+                                        false,
+                                        false))
+                /* Update info for the old maxGroup group */
+                debug(maxGroup).gd_full = debug(maxGroup).gd_p
+                debug(maxGroup).index_full = debug(maxGroup).index_p
+                debug(maxGroup).gd_m = 0.0
+                debug(maxGroup).gd_p = 0.0
+                debug(maxGroup).index_m = Set()
+                debug(maxGroup).index_p = Set()
+                debug(maxGroup).tried = false
+                debug(maxGroup).split = false
+       }
    }
 
    val assignments = debug.keys.flatMap(i => debug(i).index_full zip Stream.continually(i))
-			       .map{case (id, cl) => Assignment(id, cl)}
+                               .map{case (id, cl) => Assignment(id, cl)}
    new DependenceClusteringModel(t, epsi_d, delta_dep, delta_e, delta_v, similarities.context.parallelize(assignments.toSeq))
   }
 
@@ -384,7 +384,7 @@ object DependenceClustering extends Logging {
     val ne = gA.numVertices
 
     // Propagate diffusion
-    for (a <- 1 to t){
+    for (a <- 1 to t) {
         var outDegrees: VertexRDD[Int] = gA.outDegrees
 
         // Sum all in-edges
@@ -399,9 +399,9 @@ object DependenceClustering extends Logging {
 
         var vD__ = gB_.aggregateMessages[mutable.Map[Long, Double]](
                 sendMsg = ctx => {
-                if (ctx.attr * ctx.srcAttr._1  > delta_v){
+                if (ctx.attr * ctx.srcAttr._1  > delta_v) {
                         ctx.sendToSrc(mutable.Map(ctx.dstId -> ctx.attr))
-                }else{
+                } else {
                         ctx.sendToSrc(mutable.Map[Long, Double]())
                 }
                 },
@@ -412,9 +412,9 @@ object DependenceClustering extends Logging {
         var vD___ = gB__.aggregateMessages[Set[(Long, Double)]](
                 sendMsg = ctx => {
                 var newEdges : Set[(Long, Double)] = Set()
-                if (ctx.srcAttr != null && ctx.dstAttr != null){
+                if (ctx.srcAttr != null && ctx.dstAttr != null) {
                 ctx.dstAttr.keys.foreach{ i =>
-                        if (!ctx.srcAttr.contains(i) && ctx.attr > delta_e){
+                        if (!ctx.srcAttr.contains(i) && ctx.attr > delta_e) {
                                 newEdges = newEdges union Set((i, ctx.attr * ctx.dstAttr(i)))
                         }
                 }
@@ -428,7 +428,7 @@ object DependenceClustering extends Logging {
 
         var gAdd = Graph.fromEdges(edgesAdd, 0.0)
 
-        var gDiff: Graph[Double,Double] = Graph(
+        var gDiff: Graph[Double, Double] = Graph(
                 gA.vertices,
                 gA.edges.union(gAdd.edges)
         ).groupEdges( (attr1, attr2) => if (attr1 > attr2) attr1 else attr2 )

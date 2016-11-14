@@ -268,6 +268,8 @@ class DependenceClustering private[clustering] (
                            if (!debug(i).tried) {
                                 debug(i).tried = true
                                 val selected_indices = debug(i).index_full
+				   
+                                if (selected_indices.size > 1) {
                                 var subM = w0.subgraph(vpred = (id, d) => selected_indices contains id)
                                 var md = dep(subM)
 
@@ -287,15 +289,16 @@ class DependenceClustering private[clustering] (
 
                                 print( "Key = " + i )
                                 println(" Value = " + debug(i))
-                              }
+                                }
+                          }
 
-                              if (debug(i).split) {
+                          if (debug(i).split) {
                                 var depGain = debug(i).gd_m + debug(i).gd_p - debug(i).gd_full
                                 if (depGain > maxDepGain + 1E-16) {
                                         maxDepGain = depGain
                                         maxGroup = i
                               }
-                           }
+                          }
        }
        if (maxDepGain > maxDep*delta_dep) {
                 continueIteration = true

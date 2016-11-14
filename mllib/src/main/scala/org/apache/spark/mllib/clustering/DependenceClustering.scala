@@ -17,21 +17,22 @@
 
 package org.apache.spark.mllib.clustering
 
-import org.json4s.JsonDSL._
 import org.json4s._
 import org.json4s.jackson.JsonMethods._
+import org.json4s.JsonDSL._
 
 import org.apache.spark.annotation.Since
 import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.graphx._
 import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.mllib.util.{Loader, MLUtils, Saveable}
-import org.apache.spark.rdd.{RDD, EmptyRDD}
+import org.apache.spark.rdd.{EmptyRDD, RDD}
 import org.apache.spark.sql.{Row, SQLContext}
 import org.apache.spark.util.random.XORShiftRandom
 import org.apache.spark.{Logging, SparkContext, SparkException}
 
 import scala.collection.mutable
+
 import scala.language.postfixOps
 
 /**
@@ -82,7 +83,8 @@ object DependenceClusteringModel extends Loader[DependenceClusteringModel] {
       import sqlContext.implicits._
 
       val metadata = compact(render(
-        ("class" -> thisClassName) ~ ("version" -> thisFormatVersion) ~ ("t" -> model.t) ~ ("t" -> model.t)))
+        ("class" -> thisClassName) ~ ("version" -> thisFormatVersion) ~ 
+	("t" -> model.t) ~ ("t" -> model.t)))
       sc.parallelize(Seq(metadata), 1).saveAsTextFile(Loader.metadataPath(path))
 
       val dataRDD = model.assignments.toDF()
@@ -107,7 +109,8 @@ object DependenceClusteringModel extends Loader[DependenceClusteringModel] {
       Loader.checkSchema[DependenceClustering.Assignment](assignments.schema)
 
       val assignmentsRDD = assignments.map {
-        case Row(id: Long, cluster: Int, eval: Float) => DependenceClustering.Assignment(id, cluster)
+        case Row(id: Long, cluster: Int, eval: Float) => 
+	      DependenceClustering.Assignment(id, cluster)
       }
 
       new DependenceClusteringModel(t, epsi_d, delta_dep, delta_e, delta_v, assignmentsRDD)
@@ -138,11 +141,13 @@ class DependenceClustering private[clustering] (
   import org.apache.spark.mllib.clustering.DependenceClustering._
 
   /**
-   * Constructs a DEP instance with default parameters: {t: 2, epsi_d: 0.0, delta_dep: 0.0, delta_e = 0.0, delta_v = 0.0, maxIterations: 100,
+   * Constructs a DEP instance with default parameters: 
+   * {t: 2, epsi_d: 0.0, delta_dep: 0.0, delta_e = 0.0, delta_v = 0.0, maxIterations: 100,
    * initMode: "random"}.
    */
   @Since("1.3.0")
-  def this() = this(t = 2, epsi_d = 0.0f, delta_dep = 0.0f, delta_e = 0.0f, delta_v = 0.0f, maxIterations = 100, initMode = "random")
+  def this() = this(t = 2, epsi_d = 0.0f, delta_dep = 0.0f, delta_e = 0.0f, 
+		    delta_v = 0.0f, maxIterations = 100, initMode = "random")
 
   /**
    * Set the number of clusters.
@@ -236,17 +241,21 @@ class DependenceClustering private[clustering] (
     var continueIteration = true
 
     /* Storage for a group info */
-    case class debug_info(var gd_full: Double, /* group dependence for index_full slice */
+    case class DebugInfo(var gd_full: Double, /* group dependence for index_full slice */
                                 var gd_m: Double, /* group dependence for index_m slice */
                                 var gd_p: Double, /* group dependence for index_p slice */
-                                var index_m: Set[Long], /* slice of items from index_full that received negative dependence score */
-                                var index_p: Set[Long],  /* slice of items from index_full that received positive dependence score */
+                                var index_m: Set[Long], /* slice of items from index_full that 
+				received negative dependence score */
+                                var index_p: Set[Long],  /* slice of items from index_full that 
+				received positive dependence score */
                                 var index_full: Set[Long],  /* slice of items from the entire item pool */
-                                var tried: Boolean, /* flag for whether split of index_full into index_m and index_p was tried */
-                                var split: Boolean)  /* flag for whether split of index_full into index_m and index_p was successful */
+                                var tried: Boolean, /* flag for whether split of index_full into 
+				index_m and index_p was tried */
+                                var split: Boolean)  /* flag for whether split of index_full into index_m 
+				and index_p was successful */
 
    /* Storage of info for all groups */
-   val debug = mutable.Map(0 -> debug_info(w0.edges.map(e => e.attr).reduce(_ + _),
+   val debug = mutable.Map(0 -> DebugInfo(w0.edges.map(e => e.attr).reduce(_ + _),
                                 0.0,
                                 0.0,
                                 Set(),
@@ -273,22 +282,30 @@ class DependenceClustering private[clustering] (
                                 var subM = w0.subgraph(vpred = (id, d) => selected_indices contains id)
                                 var md = dep(subM)
 
-                                debug(i).index_m = md.assignments.filter(a => a.cluster == 0).map(a => a.id).collect().toSet
-                                debug(i).index_p = md.assignments.filter(a => a.cluster == 1).map(a => a.id).collect().toSet
+                                debug(i).index_m = md.assignments.filter(a => a.cluster == 0)
+					                         .map(a => a.id)
+					                         .collect().toSet
+                                debug(i).index_p = md.assignments.filter(a => a.cluster == 1)
+					                         .map(a => a.id)
+					                         .collect().toSet
 
-                                debug(i).gd_m = if (debug(i).index_m.size > 0) subM.subgraph(vpred = (id, d) => debug(i).index_m contains id)
-                                                                                        .edges.map(e => e.attr)
-                                                                                        .fold(0.0)(_ + _) else 0.0
-                                debug(i).gd_p = if (debug(i).index_p.size > 0) subM.subgraph(vpred = (id, d) => debug(i).index_p contains id)
-                                                                                        .edges.map(e => e.attr)
-                                                                                        .fold(0.0)(_ + _) else 0.0
+                                debug(i).gd_m = if (debug(i).index_m.size > 0) subM.subgraph(
+                                        vpred = (id, d) => debug(i).index_m contains id)
+                                        .edges.map(e => e.attr)
+                                        .fold(0.0)(_ + _) else 0.0
+                                debug(i).gd_p = if (debug(i).index_p.size > 0) subM.subgraph(
+                                        vpred = (id, d) => debug(i).index_p contains id)
+                                        .edges.map(e => e.attr)
+                                        .fold(0.0)(_ + _) else 0.0
 
                                 if (!debug(i).index_m.isEmpty && !debug(i).index_p.isEmpty) {
                                     debug(i).split = true
                                 }
 
                                 print( "Key = " + i )
+                                // scalastyle:off println
                                 println(" Value = " + debug(i))
+                                // scalastyle:on println
                                 }
                           }
 
@@ -304,7 +321,7 @@ class DependenceClustering private[clustering] (
                 continueIteration = true
                 var newGroup = debug.size
 		/* Create and initialize info container for the new newGroup group */
-                debug += (newGroup -> debug_info(debug(maxGroup).gd_m,
+                debug += (newGroup -> DebugInfo(debug(maxGroup).gd_m,
                                         0.0,
                                         0.0,
                                         Set(),
@@ -326,7 +343,8 @@ class DependenceClustering private[clustering] (
 
    val assignments = debug.keys.flatMap(i => debug(i).index_full zip Stream.continually(i))
                                .map{case (id, cl) => Assignment(id, cl)}
-   new DependenceClusteringModel(t, epsi_d, delta_dep, delta_e, delta_v, similarities.context.parallelize(assignments.toSeq))
+   new DependenceClusteringModel(t, epsi_d, delta_dep, delta_e, 
+                                 delta_v, similarities.context.parallelize(assignments.toSeq))
   }
 
   /**
@@ -371,7 +389,8 @@ object DependenceClustering extends Logging {
    * Normalizes the affinity matrix (A) by row sums and returns the normalized affinity matrix (W).
    */
   private[clustering]
-  def normalize(similarities: RDD[(Long, Long, Double)], epsi_d: Float, t: Int, delta_e: Float, delta_v: Float)
+  def normalize(similarities: RDD[(Long, Long, Double)], epsi_d: Float, 
+                t: Int, delta_e: Float, delta_v: Float)
     : Graph[Double, Double] = {
     val edges = similarities.flatMap { case (i, j, s) =>
       if (s < 0.0) {

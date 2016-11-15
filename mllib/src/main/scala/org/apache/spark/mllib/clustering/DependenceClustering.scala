@@ -85,7 +85,7 @@ object DependenceClusteringModel extends Loader[DependenceClusteringModel] {
 
       val metadata = compact(render(
         ("class" -> thisClassName) ~ ("version" -> thisFormatVersion) ~ 
-	("t" -> model.t) ~ ("t" -> model.t)))
+        ("t" -> model.t) ~ ("t" -> model.t)))
       sc.parallelize(Seq(metadata), 1).saveAsTextFile(Loader.metadataPath(path))
 
       val dataRDD = model.assignments.toDF()
@@ -111,7 +111,7 @@ object DependenceClusteringModel extends Loader[DependenceClusteringModel] {
 
       val assignmentsRDD = assignments.map {
         case Row(id: Long, cluster: Int, eval: Float) => 
-	      DependenceClustering.Assignment(id, cluster)
+                 DependenceClustering.Assignment(id, cluster)
       }
 
       new DependenceClusteringModel(t, epsi_d, delta_dep, delta_e, delta_v, assignmentsRDD)

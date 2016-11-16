@@ -114,7 +114,7 @@ object DependenceClusteringModel extends Loader[DependenceClusteringModel] {
                  DependenceClustering.Assignment(id, cluster)
       }
 
-      new DependenceClusteringModel(t, epsi_d, delta_dep, delta_e, delta_v, assignmentsRDD)
+      new DependenceClusteringModel(t, epsi_d, delta_dep, delta_e, delta_v, assignmentsRDD.rdd)
     }
   }
 }

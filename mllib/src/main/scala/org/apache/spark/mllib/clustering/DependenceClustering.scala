@@ -17,6 +17,9 @@
 
 package org.apache.spark.mllib.clustering
 
+import scala.collection.mutable
+import scala.language.postfixOps
+
 import org.json4s._
 import org.json4s.jackson.JsonMethods._
 import org.json4s.JsonDSL._
@@ -31,8 +34,6 @@ import org.apache.spark.mllib.util.{Loader, MLUtils, Saveable}
 import org.apache.spark.rdd.{EmptyRDD, RDD}
 import org.apache.spark.sql.{Row, SQLContext}
 import org.apache.spark.util.random.XORShiftRandom
-import scala.collection.mutable
-import scala.language.postfixOps
 
 /**
  * Model produced by [[DependenceClustering]].

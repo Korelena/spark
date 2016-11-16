@@ -280,7 +280,7 @@ class DependenceClustering private[clustering] (
                                 debug(i).tried = true
                                 val selected_indices = debug(i).index_full
 
-                                if (selected_indices.size > 1) {
+                                if (selected_indices.size > 20) {
                                 var subM = w0.subgraph(vpred = (id, d) =>
                                                        selected_indices contains id)
                                 var md = dep(subM)

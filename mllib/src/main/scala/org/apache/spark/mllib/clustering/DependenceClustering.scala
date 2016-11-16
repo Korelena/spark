@@ -31,7 +31,6 @@ import org.apache.spark.mllib.util.{Loader, MLUtils, Saveable}
 import org.apache.spark.rdd.{EmptyRDD, RDD}
 import org.apache.spark.sql.{Row, SQLContext}
 import org.apache.spark.util.random.XORShiftRandom
-
 import scala.collection.mutable
 import scala.language.postfixOps
 
@@ -95,6 +94,7 @@ object DependenceClusteringModel extends Loader[DependenceClusteringModel] {
     def load(sc: SparkContext, path: String): DependenceClusteringModel = {
       implicit val formats = DefaultFormats
       val sqlContext = SQLContext.getOrCreate(sc)
+      import sqlContext.implicits._
 
       val (className, formatVersion, metadata) = Loader.loadMetadata(sc, path)
       assert(className == thisClassName)
